@@ -1,9 +1,9 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updatePassword as fbUpdatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-import { getDatabase, ref, set, get, push, update, onValue, query, orderByChild } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+import { getDatabase, ref, set, get, push, update, onValue } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
 
-// Firebase Config - UPDATED
+// Firebase Config
 const firebaseConfig = {
     apiKey: "AIzaSyBJW_BwyZzxqumyDsyACddWZMUKJv1O9as",
     authDomain: "ak-playvideo.firebaseapp.com",
@@ -46,7 +46,7 @@ async function loadUserData(uid) {
             updateProfileDisplay();
         }
     } catch (error) {
-        console.error('Error loading user data:', error);
+        console.error('Error loading user:', error);
     }
 }
 
@@ -63,53 +63,9 @@ function showMainApp() {
     document.getElementById('mainApp').classList.add('active');
 }
 
-// Login
-window.login = async () => {
-    const username = document.getElementById('loginUsername').value.trim();
-    const password = document.getElementById('loginPassword').value;
-
-    if (!username || !password) {
-        alert('Sila isi semua field!');
-        return;
-    }
-
-    try {
-        // Check if username exists in database first
-        const usersRef = ref(db, 'usernames');
-        const snapshot = await get(usersRef);
-        
-        let userEmail = null;
-        if (snapshot.exists()) {
-            const usernames = snapshot.val();
-            if (usernames[username]) {
-                userEmail = usernames[username];
-            }
-        }
-
-        if (!userEmail) {
-            alert('Username tidak wujud!');
-            return;
-        }
-
-        await signInWithEmailAndPassword(auth, userEmail, password);
-        
-        // Save to local storage
-        saveAccountToLocal(username, password);
-    } catch (error) {
-        console.error('Login error:', error);
-        if (error.code === 'auth/wrong-password') {
-            alert('Password salah!');
-        } else if (error.code === 'auth/user-not-found') {
-            alert('Username tidak wujud!');
-        } else {
-            alert('Login gagal! Sila cuba lagi.');
-        }
-    }
-};
-
-// Register
+// Register - SIMPLE VERSION
 window.register = async () => {
-    const username = document.getElementById('regUsername').value.trim().toLowerCase();
+    const username = document.getElementById('regUsername').value.trim();
     const password = document.getElementById('regPassword').value;
     const confirm = document.getElementById('regConfirm').value;
 
@@ -124,52 +80,42 @@ window.register = async () => {
     }
 
     if (username.length < 3) {
-        alert('Username mestilah sekurang-kurangnya 3 aksara!');
+        alert('Username minimum 3 huruf!');
         return;
     }
 
     if (password.length < 6) {
-        alert('Password mestilah sekurang-kurangnya 6 aksara!');
-        return;
-    }
-
-    // Check for valid username (alphanumeric only)
-    if (!/^[a-z0-9_]+$/.test(username)) {
-        alert('Username hanya boleh mengandungi huruf kecil, nombor dan underscore!');
+        alert('Password minimum 6 huruf!');
         return;
     }
 
     try {
-        // Check if username already exists
-        const usernamesRef = ref(db, `usernames/${username}`);
-        const usernameSnapshot = await get(usernamesRef);
+        // Buat email unik dari username + timestamp
+        const timestamp = Date.now();
+        const email = `${username.toLowerCase()}_${timestamp}@locatwet.com`;
         
-        if (usernameSnapshot.exists()) {
-            alert('Username sudah digunakan! Sila pilih username lain.');
-            return;
-        }
-
-        // Create unique email for this username
-        const email = `${username}_${Date.now()}@locatwet.app`;
+        console.log('Trying to create user with email:', email);
         
+        // Create user
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const uid = userCredential.user.uid;
         
-        // Save username mapping
-        await set(ref(db, `usernames/${username}`), email);
+        console.log('User created! UID:', uid);
         
-        // Create user profile in database
+        // Save user data
         await set(ref(db, `users/${uid}`), {
             username: username,
             email: email,
             bio: 'Selamat datang ke LocaTwet!',
-            createdAt: Date.now()
+            createdAt: timestamp
         });
-
-        // Save to local storage
-        saveAccountToLocal(username, password);
         
-        alert('Pendaftaran berjaya! Selamat datang ke LocaTwet!');
+        console.log('User data saved!');
+
+        // Save account locally
+        saveAccountToLocal(username, password, email);
+        
+        alert('Berjaya daftar! Selamat datang ' + username + '!');
         
         // Clear form
         document.getElementById('regUsername').value = '';
@@ -177,26 +123,73 @@ window.register = async () => {
         document.getElementById('regConfirm').value = '';
         
     } catch (error) {
-        console.error('Registration error:', error);
+        console.error('Register error:', error);
+        console.error('Error code:', error.code);
+        console.error('Error message:', error.message);
+        
         if (error.code === 'auth/email-already-in-use') {
-            alert('Akaun sudah wujud! Sila log masuk.');
+            alert('Username ini sudah digunakan! Cuba username lain.');
         } else if (error.code === 'auth/weak-password') {
-            alert('Password terlalu lemah! Gunakan sekurang-kurangnya 6 aksara.');
+            alert('Password terlalu lemah!');
+        } else if (error.code === 'auth/invalid-email') {
+            alert('Format email tidak sah!');
         } else {
-            alert('Pendaftaran gagal! Sila cuba lagi.');
+            alert('Ralat: ' + error.message);
         }
     }
 };
 
-// Save Account to Local Storage (Max 3)
-function saveAccountToLocal(username, password) {
+// Login - SIMPLE VERSION
+window.login = async () => {
+    const username = document.getElementById('loginUsername').value.trim();
+    const password = document.getElementById('loginPassword').value;
+
+    if (!username || !password) {
+        alert('Sila isi username dan password!');
+        return;
+    }
+
+    try {
+        // Check dari local storage dulu
+        const accounts = JSON.parse(localStorage.getItem('locatwet_accounts') || '[]');
+        const account = accounts.find(acc => acc.username === username);
+        
+        if (!account) {
+            alert('Username tidak dijumpai! Sila daftar dulu.');
+            return;
+        }
+
+        console.log('Trying to login with email:', account.email);
+        
+        // Login dengan email yang disimpan
+        await signInWithEmailAndPassword(auth, account.email, password);
+        
+        console.log('Login successful!');
+        
+    } catch (error) {
+        console.error('Login error:', error);
+        
+        if (error.code === 'auth/wrong-password') {
+            alert('Password salah!');
+        } else if (error.code === 'auth/user-not-found') {
+            alert('Akaun tidak wujud!');
+        } else if (error.code === 'auth/invalid-credential') {
+            alert('Username atau password salah!');
+        } else {
+            alert('Login gagal: ' + error.message);
+        }
+    }
+};
+
+// Save Account to Local Storage
+function saveAccountToLocal(username, password, email) {
     let accounts = JSON.parse(localStorage.getItem('locatwet_accounts') || '[]');
     
     // Remove if already exists
     accounts = accounts.filter(acc => acc.username !== username);
     
     // Add to beginning
-    accounts.unshift({ username, password });
+    accounts.unshift({ username, password, email });
     
     // Keep only 3 accounts
     if (accounts.length > 3) {
@@ -204,15 +197,15 @@ function saveAccountToLocal(username, password) {
     }
     
     localStorage.setItem('locatwet_accounts', JSON.stringify(accounts));
+    console.log('Account saved to localStorage');
 }
 
-// Show Register Page
+// Show Register/Login
 window.showRegister = () => {
     document.getElementById('loginPage').classList.remove('active');
     document.getElementById('registerPage').classList.add('active');
 };
 
-// Show Login Page
 window.showLogin = () => {
     document.getElementById('registerPage').classList.remove('active');
     document.getElementById('loginPage').classList.add('active');
@@ -220,7 +213,7 @@ window.showLogin = () => {
 
 // Logout
 window.logout = async () => {
-    if (confirm('Adakah anda pasti mahu log keluar?')) {
+    if (confirm('Log keluar?')) {
         await signOut(auth);
         currentUser = null;
     }
@@ -229,24 +222,20 @@ window.logout = async () => {
 // Update Profile Display
 function updateProfileDisplay() {
     if (currentUser) {
-        const initial = currentUser.username.charAt(0).toUpperCase();
-        document.getElementById('profileAvatar').textContent = initial;
+        document.getElementById('profileAvatar').textContent = currentUser.username.charAt(0).toUpperCase();
         document.getElementById('profileUsername').textContent = currentUser.username;
-        document.getElementById('profileBio').textContent = currentUser.bio || 'Selamat datang ke LocaTwet!';
+        document.getElementById('profileBio').textContent = currentUser.bio || 'Selamat datang!';
     }
 }
 
-// Show Page (Feed, Upload, Profile)
+// Show Page
 window.showPage = (page) => {
-    // Hide all content pages
     document.getElementById('feedPage').classList.add('hidden');
     document.getElementById('uploadPage').classList.add('hidden');
     document.getElementById('profilePage').classList.add('hidden');
     
-    // Remove active from all nav buttons
     document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
     
-    // Show selected page
     if (page === 'feed') {
         document.getElementById('feedPage').classList.remove('hidden');
         document.querySelectorAll('.nav-btn')[0].classList.add('active');
@@ -271,7 +260,7 @@ window.previewFile = () => {
     reader.onload = (e) => {
         const preview = document.getElementById('previewArea');
         if (file.type.startsWith('image/')) {
-            preview.innerHTML = `<img src="${e.target.result}" alt="Preview">`;
+            preview.innerHTML = `<img src="${e.target.result}">`;
         } else if (file.type.startsWith('video/')) {
             preview.innerHTML = `<video src="${e.target.result}" controls></video>`;
         }
@@ -290,13 +279,13 @@ window.uploadPost = async () => {
     const caption = document.getElementById('postCaption').value.trim();
     
     try {
-        // Upload file to storage
+        // Upload file
         const fileName = `${Date.now()}_${selectedFile.name}`;
         const fileRef = storageRef(storage, `posts/${fileName}`);
         const snapshot = await uploadBytes(fileRef, selectedFile);
         const mediaUrl = await getDownloadURL(snapshot.ref);
 
-        // Save post to database
+        // Save post
         const postRef = push(ref(db, 'posts'));
         await set(postRef, {
             userId: currentUser.uid,
@@ -308,19 +297,18 @@ window.uploadPost = async () => {
             timestamp: Date.now()
         });
 
-        alert('Post berjaya dimuat naik!');
+        alert('Post berjaya!');
         
-        // Reset form
+        // Reset
         document.getElementById('postCaption').value = '';
         document.getElementById('previewArea').innerHTML = '';
         document.getElementById('fileInput').value = '';
         selectedFile = null;
         
-        // Go to feed
         showPage('feed');
     } catch (error) {
         console.error('Upload error:', error);
-        alert('Gagal memuat naik post! Sila cuba lagi.');
+        alert('Gagal upload: ' + error.message);
     }
 };
 
@@ -330,16 +318,11 @@ function loadPosts() {
     
     onValue(postsRef, (snapshot) => {
         const posts = [];
-        snapshot.forEach((childSnapshot) => {
-            posts.push({
-                id: childSnapshot.key,
-                ...childSnapshot.val()
-            });
+        snapshot.forEach((child) => {
+            posts.push({ id: child.key, ...child.val() });
         });
         
-        // Sort by timestamp (newest first)
         posts.sort((a, b) => b.timestamp - a.timestamp);
-        
         displayPosts(posts);
     });
 }
@@ -349,7 +332,7 @@ function displayPosts(posts) {
     const container = document.getElementById('postsContainer');
     
     if (posts.length === 0) {
-        container.innerHTML = '<div class="loading">Tiada post lagi. Jadilah yang pertama!</div>';
+        container.innerHTML = '<div class="loading">Tiada post lagi</div>';
         return;
     }
 
@@ -359,7 +342,7 @@ function displayPosts(posts) {
         const commentsCount = post.comments ? Object.keys(post.comments).length : 0;
         
         const mediaTag = post.mediaType === 'image' 
-            ? `<img src="${post.mediaUrl}" class="post-media" alt="Post image">`
+            ? `<img src="${post.mediaUrl}" class="post-media">`
             : `<video src="${post.mediaUrl}" class="post-media" controls></video>`;
 
         return `
@@ -386,14 +369,12 @@ function displayPosts(posts) {
     }).join('');
 }
 
-// Escape HTML to prevent XSS
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
 }
 
-// Format Time
 function formatTime(timestamp) {
     const now = Date.now();
     const diff = now - timestamp;
@@ -402,13 +383,12 @@ function formatTime(timestamp) {
     const hours = Math.floor(diff / 3600000);
     const days = Math.floor(diff / 86400000);
     
-    if (minutes < 1) return 'Baru sahaja';
-    if (minutes < 60) return `${minutes} minit yang lalu`;
-    if (hours < 24) return `${hours} jam yang lalu`;
-    if (days < 7) return `${days} hari yang lalu`;
+    if (minutes < 1) return 'Baru';
+    if (minutes < 60) return `${minutes}m`;
+    if (hours < 24) return `${hours}h`;
+    if (days < 7) return `${days}d`;
     
-    const date = new Date(timestamp);
-    return date.toLocaleDateString('ms-MY');
+    return new Date(timestamp).toLocaleDateString('ms-MY');
 }
 
 // Toggle Like
@@ -442,33 +422,25 @@ window.toggleLike = async (postId) => {
 // Show Comments
 window.showComments = async (postId) => {
     currentPostId = postId;
-    const modal = document.getElementById('commentModal');
-    modal.classList.add('active');
+    document.getElementById('commentModal').classList.add('active');
     
-    // Load comments
     const commentsRef = ref(db, `posts/${postId}/comments`);
     onValue(commentsRef, (snapshot) => {
         const comments = [];
-        snapshot.forEach((childSnapshot) => {
-            comments.push({
-                id: childSnapshot.key,
-                ...childSnapshot.val()
-            });
+        snapshot.forEach((child) => {
+            comments.push({ id: child.key, ...child.val() });
         });
         
-        // Sort by timestamp
         comments.sort((a, b) => a.timestamp - b.timestamp);
-        
         displayComments(comments);
     });
 };
 
-// Display Comments
 function displayComments(comments) {
     const container = document.getElementById('commentsList');
     
     if (comments.length === 0) {
-        container.innerHTML = '<div class="loading">Tiada komen lagi. Jadilah yang pertama!</div>';
+        container.innerHTML = '<div class="loading">Tiada komen</div>';
         return;
     }
 
@@ -488,7 +460,7 @@ window.postComment = async () => {
     const text = document.getElementById('commentInput').value.trim();
     
     if (!text) {
-        alert('Sila tulis komen!');
+        alert('Tulis komen dulu!');
         return;
     }
 
@@ -504,57 +476,24 @@ window.postComment = async () => {
         document.getElementById('commentInput').value = '';
     } catch (error) {
         console.error('Comment error:', error);
-        alert('Gagal menghantar komen!');
     }
 };
 
-// Show Edit Modal
+// Edit Profile
 window.showEditModal = () => {
     document.getElementById('editUsername').value = currentUser.username;
     document.getElementById('editModal').classList.add('active');
 };
 
-// Update Username
 window.updateUsername = async () => {
-    const newUsername = document.getElementById('editUsername').value.trim().toLowerCase();
+    const newUsername = document.getElementById('editUsername').value.trim();
     
-    if (!newUsername) {
-        alert('Sila masukkan username!');
-        return;
-    }
-
-    if (newUsername.length < 3) {
-        alert('Username mestilah sekurang-kurangnya 3 aksara!');
-        return;
-    }
-
-    if (!/^[a-z0-9_]+$/.test(newUsername)) {
-        alert('Username hanya boleh mengandungi huruf kecil, nombor dan underscore!');
-        return;
-    }
-
-    if (newUsername === currentUser.username) {
-        closeModal('editModal');
+    if (!newUsername || newUsername.length < 3) {
+        alert('Username minimum 3 huruf!');
         return;
     }
 
     try {
-        // Check if new username already exists
-        const usernamesRef = ref(db, `usernames/${newUsername}`);
-        const snapshot = await get(usernamesRef);
-        
-        if (snapshot.exists()) {
-            alert('Username sudah digunakan! Sila pilih username lain.');
-            return;
-        }
-
-        // Remove old username mapping
-        await set(ref(db, `usernames/${currentUser.username}`), null);
-        
-        // Add new username mapping
-        await set(ref(db, `usernames/${newUsername}`), currentUser.email);
-
-        // Update user profile
         await update(ref(db, `users/${currentUser.uid}`), {
             username: newUsername
         });
@@ -562,70 +501,66 @@ window.updateUsername = async () => {
         currentUser.username = newUsername;
         updateProfileDisplay();
         closeModal('editModal');
-        alert('Username berjaya dikemaskini!');
+        alert('Username updated!');
     } catch (error) {
-        console.error('Update username error:', error);
-        alert('Gagal mengemaskini username!');
+        alert('Gagal update!');
     }
 };
 
-// Show Password Modal
+// Change Password
 window.showPasswordModal = () => {
     document.getElementById('passwordModal').classList.add('active');
 };
 
-// Update Password
 window.updatePassword = async () => {
-    const oldPassword = document.getElementById('oldPassword').value;
-    const newPassword = document.getElementById('newPassword').value;
+    const oldPass = document.getElementById('oldPassword').value;
+    const newPass = document.getElementById('newPassword').value;
 
-    if (!oldPassword || !newPassword) {
-        alert('Sila isi semua field!');
+    if (!oldPass || !newPass) {
+        alert('Isi semua field!');
         return;
     }
 
-    if (newPassword.length < 6) {
-        alert('Password baru mestilah sekurang-kurangnya 6 aksara!');
+    if (newPass.length < 6) {
+        alert('Password baru minimum 6 huruf!');
         return;
     }
 
     try {
         const user = auth.currentUser;
-        const email = user.email;
-        const credential = EmailAuthProvider.credential(email, oldPassword);
+        const credential = EmailAuthProvider.credential(user.email, oldPass);
         
         await reauthenticateWithCredential(user, credential);
-        await fbUpdatePassword(user, newPassword);
+        await fbUpdatePassword(user, newPass);
 
         document.getElementById('oldPassword').value = '';
         document.getElementById('newPassword').value = '';
         closeModal('passwordModal');
-        alert('Password berjaya ditukar!');
+        alert('Password changed!');
     } catch (error) {
-        console.error('Password error:', error);
         if (error.code === 'auth/wrong-password') {
             alert('Password lama salah!');
         } else {
-            alert('Gagal menukar password!');
+            alert('Gagal!');
         }
     }
 };
 
-// Show Switch Account Modal
+// Switch Account
 window.showSwitchModal = () => {
     const accounts = JSON.parse(localStorage.getItem('locatwet_accounts') || '[]');
     const container = document.getElementById('accountsList');
     
     if (accounts.length === 0) {
-        container.innerHTML = '<div class="loading">Tiada akaun lain disimpan</div>';
+        container.innerHTML = '<div class="loading">Tiada akaun lain</div>';
     } else {
-        container.innerHTML = accounts.map((acc, index) => `
-            <div class="account-item" onclick="switchToAccount('${acc.username}', '${acc.password}')">
+        container.innerHTML = accounts.map(acc => `
+            <div class="account-item" onclick="switchToAccount('${acc.username}', '${acc.password}', '${acc.email}')">
                 <div class="account-info">
                     <div class="account-avatar">${acc.username.charAt(0).toUpperCase()}</div>
                     <span>${acc.username}</span>
                 </div>
-                ${acc.username === currentUser.username ? '<span style="color: #667eea; font-weight: 700;">✓ Aktif</span>' : ''}
+                ${acc.username === currentUser.username ? '<span style="color:#667eea">✓</span>' : ''}
             </div>
         `).join('');
     }
@@ -633,31 +568,18 @@ window.showSwitchModal = () => {
     document.getElementById('switchModal').classList.add('active');
 };
 
-// Switch to Account
-window.switchToAccount = async (username, password) => {
+window.switchToAccount = async (username, password, email) => {
     if (username === currentUser.username) {
-        alert('Anda sudah menggunakan akaun ini!');
+        alert('Dah guna akaun ni!');
         return;
     }
 
     try {
-        // Get email from username
-        const usernamesRef = ref(db, `usernames/${username}`);
-        const snapshot = await get(usernamesRef);
-        
-        if (!snapshot.exists()) {
-            alert('Akaun tidak wujud!');
-            return;
-        }
-
-        const email = snapshot.val();
-        
         await signOut(auth);
         await signInWithEmailAndPassword(auth, email, password);
         closeModal('switchModal');
     } catch (error) {
-        console.error('Switch account error:', error);
-        alert('Gagal menukar akaun! Password mungkin telah berubah.');
+        alert('Gagal switch!');
     }
 };
 
@@ -665,14 +587,8 @@ window.switchToAccount = async (username, password) => {
 window.closeModal = (modalId) => {
     document.getElementById(modalId).classList.remove('active');
     
-    // Clear inputs
     if (modalId === 'commentModal') {
         document.getElementById('commentInput').value = '';
         currentPostId = null;
-    } else if (modalId === 'editModal') {
-        document.getElementById('editUsername').value = '';
-    } else if (modalId === 'passwordModal') {
-        document.getElementById('oldPassword').value = '';
-        document.getElementById('newPassword').value = '';
     }
 };
